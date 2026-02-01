@@ -54,15 +54,6 @@ app.use('/api/v1/driver', require('../src/routes/driver'));
 app.use('/api/v1/files', require('../src/routes/files'));
 
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date(),
-    environment: process.env.NODE_ENV || 'production',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
-  });
-});
-
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -74,14 +65,6 @@ app.get('/health', (req, res) => {
 
 // Root route
 app.get('/', (req, res) => {
-  res.json({
-    message: 'Car Crash Reporting & Ambulance Dispatch System API',
-    version: '1.0.0',
-    status: 'running'
-  });
-});
-
-app.get('/api', (req, res) => {
   res.json({
     message: 'Car Crash Reporting & Ambulance Dispatch System API',
     version: '1.0.0',
