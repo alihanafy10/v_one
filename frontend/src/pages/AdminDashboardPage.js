@@ -81,31 +81,8 @@ const AdminDashboardPage = () => {
         socket.off('backup_requested');
       };
     }
-  }, [socket]);
+  }, [socket, loadData]);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      
-      // Load reports
-      const reportsParams = {};
-      if (statusFilter) {
-        reportsParams.status = statusFilter;
-      }
-      const reportsRes = await adminAPI.getReports(reportsParams);
-      setReports(reportsRes.data.reports);
-
-      // Load ambulances
-      const ambulancesRes = await adminAPI.getAmbulances();
-      setAmbulances(ambulancesRes.data.ambulances);
-      setFleetSummary(ambulancesRes.data.summary);
-      
-    } catch (error) {
-      console.error('Load data error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleAssignAmbulance = async (reportId) => {
     const availableAmbulances = ambulances.filter(a => a.status === 'available');
