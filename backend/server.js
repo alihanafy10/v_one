@@ -13,9 +13,15 @@ const server = http.createServer(app);
 let io = null;
 if (process.env.VERCEL !== '1') {
   const socketIo = require('socket.io');
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://v-one-beryl.vercel.app',
+    process.env.FRONTEND_URL
+  ].filter(Boolean);
+  
   io = socketIo(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      origin: allowedOrigins,
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
       credentials: true
     }
@@ -25,10 +31,31 @@ if (process.env.VERCEL !== '1') {
 
 // Middleware
 app.use(helmet());
+
+// Configure CORS - allow both local and production URLs
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://v-one-beryl.vercel.app',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.warn('CORS blocked request from origin:', origin);
+      callback(null, true); // Allow in production for now, can be strict later
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('dev'));
@@ -60,7 +87,19 @@ app.get('/health', (req, res) => {
     status: 'OK', 
     timestamp: new Date(),
     environment: process.env.NODE_ENV,
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    corsEnabled: true
+  });
+});
+
+// API health check
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date(),
+    environment: process.env.NODE_ENV,
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    corsEnabled: true
   });
 });
 

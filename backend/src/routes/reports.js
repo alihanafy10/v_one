@@ -129,9 +129,13 @@ router.post('/create', publicLimiter, express.json({ limit: '50mb' }), async (re
     
   } catch (error) {
     console.error('Report creation error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Request body size:', JSON.stringify(req.body).length);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to create report'
+      error: error.message || 'Failed to create report',
+      code: 'SERVER_ERROR',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
