@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { reportAPI } from '../services/api';
 import './ReportCrashPage.css';
@@ -18,6 +18,13 @@ const ReportCrashPage = () => {
   const [estimatedInjured, setEstimatedInjured] = useState(0);
   const [description, setDescription] = useState('');
   const [reportResult, setReportResult] = useState(null);
+  
+  // Face capture states
+  const [faceImage, setFaceImage] = useState(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [stream, setStream] = useState(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
 
   // Get GPS location on mount
   useEffect(() => {
@@ -58,6 +65,74 @@ const ReportCrashPage = () => {
     setPhotos(photos.filter((_, i) => i !== index));
   };
 
+  // Face capture functions
+  const startCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 640, height: 480 }
+      });
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+      setShowCamera(true);
+      setError('');
+    } catch (err) {
+      console.error('Camera error:', err);
+      setError('Unable to access camera. Please check permissions.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setShowCamera(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      context.drawImage(video, 0, 0);
+      
+      canvas.toBlob((blob) => {
+        const file = new File([blob], `face_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        setFaceImage(file);
+        stopCamera();
+      }, 'image/jpeg', 0.9);
+    }
+  };
+
+  const retakeFacePhoto = () => {
+    setFaceImage(null);
+    startCamera();
+  };
+
+  const removeFacePhoto = () => {
+    setFaceImage(null);
+  };
+
+  // Cleanup camera on unmount or when verification method changes
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
+
+  useEffect(() => {
+    if (verificationMethod !== 'face_id') {
+      stopCamera();
+      setFaceImage(null);
+    }
+  }, [verificationMethod]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -73,6 +148,11 @@ const ReportCrashPage = () => {
     
     if (verificationMethod === 'national_id' && !nationalId) {
       setError('National ID is required');
+      return;
+    }
+
+    if (verificationMethod === 'face_id' && !faceImage) {
+      setError('Face photo is required for Face ID verification');
       return;
     }
     
@@ -95,6 +175,21 @@ const ReportCrashPage = () => {
       });
       
       const photosBase64 = await Promise.all(photoPromises);
+
+      // Convert face image to base64 if using face_id
+      let faceImageBase64 = null;
+      if (verificationMethod === 'face_id' && faceImage) {
+        faceImageBase64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve({
+              filename: faceImage.name,
+              data: reader.result.split(',')[1]
+            });
+          };
+          reader.readAsDataURL(faceImage);
+        });
+      }
       
       // Create JSON payload
       const payload = {
@@ -103,7 +198,8 @@ const ReportCrashPage = () => {
         },
         verification: {
           method: verificationMethod,
-          nationalId: verificationMethod === 'national_id' ? nationalId : undefined
+          nationalId: verificationMethod === 'national_id' ? nationalId : undefined,
+          faceImage: verificationMethod === 'face_id' ? faceImageBase64 : undefined
         },
         photos: photosBase64,
         vehiclesInvolved: vehiclesInvolved,
@@ -294,7 +390,7 @@ const ReportCrashPage = () => {
                       checked={verificationMethod === 'face_id'}
                       onChange={(e) => setVerificationMethod(e.target.value)}
                     />
-                    Face ID (Coming Soon)
+                    Face ID
                   </label>
                 </div>
               </div>
@@ -309,6 +405,77 @@ const ReportCrashPage = () => {
                     placeholder="Enter your National ID"
                     required
                   />
+                </div>
+              )}
+
+              {verificationMethod === 'face_id' && (
+                <div className="form-group">
+                  <label>Face Verification *</label>
+                  <p className="helper-text">Take a photo of your face for verification</p>
+                  
+                  {!faceImage && !showCamera && (
+                    <button 
+                      type="button"
+                      className="btn-camera"
+                      onClick={startCamera}
+                    >
+                      📷 Start Camera
+                    </button>
+                  )}
+
+                  {showCamera && (
+                    <div className="camera-container">
+                      <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline
+                        className="camera-video"
+                      />
+                      <div className="camera-controls">
+                        <button 
+                          type="button"
+                          className="btn-capture"
+                          onClick={capturePhoto}
+                        >
+                          📸 Capture
+                        </button>
+                        <button 
+                          type="button"
+                          className="btn-secondary"
+                          onClick={stopCamera}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <canvas ref={canvasRef} style={{ display: 'none' }} />
+                    </div>
+                  )}
+
+                  {faceImage && (
+                    <div className="face-preview">
+                      <img 
+                        src={URL.createObjectURL(faceImage)} 
+                        alt="Face verification"
+                        className="face-image"
+                      />
+                      <div className="face-controls">
+                        <button 
+                          type="button"
+                          className="btn-secondary"
+                          onClick={retakeFacePhoto}
+                        >
+                          🔄 Retake
+                        </button>
+                        <button 
+                          type="button"
+                          className="btn-remove"
+                          onClick={removeFacePhoto}
+                        >
+                          ✕ Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

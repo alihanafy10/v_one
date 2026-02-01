@@ -32,7 +32,12 @@ const crashReportSchema = new mongoose.Schema({
       enum: ['face_id', 'national_id'],
       required: true
     },
-    faceImageId: mongoose.Schema.Types.ObjectId,
+    faceImageId: String,
+    faceImageData: {
+      filename: String,
+      data: String, // Base64 encoded image
+      uploadedAt: Date
+    },
     nationalIdHash: String,
     verified: {
       type: Boolean,
@@ -43,6 +48,7 @@ const crashReportSchema = new mongoose.Schema({
   photos: [{
     fileId: String,
     filename: String,
+    data: String, // Base64 encoded image
     uploadedAt: Date
   }],
   vehiclesInvolved: {

@@ -47,12 +47,8 @@ export const authAPI = {
 
 // Report APIs
 export const reportAPI = {
-  create: (formData) => {
-    return axios.post(`${API_URL}/reports/create`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+  create: (data) => {
+    return api.post('/reports/create', data);
   },
   getById: (id) => api.get(`/reports/${id}`)
 };

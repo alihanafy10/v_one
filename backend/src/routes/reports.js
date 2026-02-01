@@ -52,7 +52,20 @@ router.post('/create', publicLimiter, express.json({ limit: '50mb' }), async (re
       }
       verificationData.nationalIdHash = hashNationalId(verification.nationalId);
     } else if (verification.method === 'face_id') {
-      verificationData.faceImageId = `face_${Date.now()}`;
+      if (!verification.faceImage) {
+        return res.status(400).json({
+          success: false,
+          error: 'Face image is required for Face ID verification',
+          code: 'FACE_IMAGE_REQUIRED'
+        });
+      }
+      verificationData.faceImageId = `face_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Store face image data (in production, this should be saved to a secure storage service)
+      verificationData.faceImageData = {
+        filename: verification.faceImage.filename || 'face_verification.jpg',
+        data: verification.faceImage.data,
+        uploadedAt: new Date()
+      };
     }
     
     // Process photos (expecting base64 strings from frontend)
