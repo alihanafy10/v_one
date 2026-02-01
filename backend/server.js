@@ -5,17 +5,23 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const http = require('http');
-const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true
-  }
-});
+
+// Socket.io only for local development
+let io = null;
+if (process.env.VERCEL !== '1') {
+  const socketIo = require('socket.io');
+  io = socketIo(server, {
+    cors: {
+      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
+      credentials: true
+    }
+  });
+  require('./src/socket/socketHandler')(io);
+}
 
 // Middleware
 app.use(helmet());
@@ -38,11 +44,8 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/crash_rep
   process.exit(1);
 });
 
-// Make io accessible to routes
+// Make io accessible to routes (will be null in Vercel)
 app.set('io', io);
-
-// Socket.io connection handling
-require('./src/socket/socketHandler')(io);
 
 // Routes
 app.use('/api/v1/auth', require('./src/routes/auth'));
