@@ -80,28 +80,38 @@ const ReportCrashPage = () => {
     setError('');
     
     try {
-      const formData = new FormData();
-      
-      // Add photos
-      photos.forEach(photo => {
-        formData.append('photos', photo);
+      // Convert photos to base64
+      const photoPromises = photos.map(photo => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve({
+              filename: photo.name,
+              data: reader.result.split(',')[1] // Get base64 data without prefix
+            });
+          };
+          reader.readAsDataURL(photo);
+        });
       });
       
-      // Add other data as JSON string
-      formData.append('location', JSON.stringify({
-        coordinates: location
-      }));
+      const photosBase64 = await Promise.all(photoPromises);
       
-      formData.append('verification', JSON.stringify({
-        method: verificationMethod,
-        nationalId: verificationMethod === 'national_id' ? nationalId : undefined
-      }));
+      // Create JSON payload
+      const payload = {
+        location: {
+          coordinates: location
+        },
+        verification: {
+          method: verificationMethod,
+          nationalId: verificationMethod === 'national_id' ? nationalId : undefined
+        },
+        photos: photosBase64,
+        vehiclesInvolved: vehiclesInvolved,
+        estimatedInjured: estimatedInjured,
+        description: description
+      };
       
-      formData.append('vehiclesInvolved', vehiclesInvolved);
-      formData.append('estimatedInjured', estimatedInjured);
-      formData.append('description', description);
-      
-      const response = await reportAPI.create(formData);
+      const response = await reportAPI.create(payload);
       
       if (response.data.success) {
         setReportResult(response.data);

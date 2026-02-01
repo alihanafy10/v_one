@@ -1,45 +1,25 @@
 const express = require('express');
 const router = express.Router();
-const { body } = require('express-validator');
-const multer = require('multer');
-const sharp = require('sharp');
 const CrashReport = require('../models/CrashReport');
-const { checkValidation } = require('../middleware/validation');
 const { publicLimiter } = require('../middleware/rateLimiter');
 const { generateReportNumber, hashNationalId, determinePriority } = require('../utils/helpers');
 const { automaticDispatch } = require('../services/dispatchService');
 
-// Configure multer for memory storage
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 2 * 1024 * 1024, // 2MB
-    files: parseInt(process.env.MAX_FILES) || 5
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg'];
-    if (allowedMimes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only JPEG and PNG allowed.'));
-    }
-  }
-});
-
-// Create crash report
-router.post('/create', publicLimiter, upload.array('photos', 5), [
-  body('location.coordinates.lat').isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
-  body('location.coordinates.lng').isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude'),
-  body('verification.method').isIn(['face_id', 'national_id']).withMessage('Invalid verification method'),
-  body('vehiclesInvolved').optional().isInt({ min: 1, max: 20 }).withMessage('Invalid vehicle count'),
-  body('estimatedInjured').optional().isInt({ min: 0, max: 100 }).withMessage('Invalid injury count'),
-  body('description').optional().isString().trim().isLength({ max: 500 }).withMessage('Description too long')
-], checkValidation, async (req, res) => {
+// Create crash report (without file upload for serverless compatibility)
+router.post('/create', publicLimiter, express.json({ limit: '50mb' }), async (req, res) => {
   try {
-    const { location, verification, vehiclesInvolved, estimatedInjured, description } = req.body;
+    const { location, verification, vehiclesInvolved, estimatedInjured, description, photos } = req.body;
     
-    // Validate photos
-    if (!req.files || req.files.length === 0) {
+    // Validate required fields
+    if (!location || !location.coordinates || !location.coordinates.lat || !location.coordinates.lng) {
+      return res.status(400).json({
+        success: false,
+        error: 'Location coordinates are required',
+        code: 'LOCATION_REQUIRED'
+      });
+    }
+    
+    if (!photos || photos.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'At least one photo is required',
@@ -47,23 +27,11 @@ router.post('/create', publicLimiter, upload.array('photos', 5), [
       });
     }
     
-    // Process and store photos (simplified - storing as base64 for demo)
-    const photos = [];
-    for (const file of req.files) {
-      // Compress image
-      const compressedImage = await sharp(file.buffer)
-        .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 85 })
-        .toBuffer();
-      
-      // Convert to base64 (in production, use GridFS or S3)
-      const base64Image = compressedImage.toString('base64');
-      
-      photos.push({
-        fileId: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        filename: file.originalname,
-        data: base64Image,
-        uploadedAt: new Date()
+    if (!verification || !verification.method) {
+      return res.status(400).json({
+        success: false,
+        error: 'Verification method is required',
+        code: 'VERIFICATION_REQUIRED'
       });
     }
     
@@ -75,11 +43,25 @@ router.post('/create', publicLimiter, upload.array('photos', 5), [
     };
     
     if (verification.method === 'national_id') {
+      if (!verification.nationalId) {
+        return res.status(400).json({
+          success: false,
+          error: 'National ID is required',
+          code: 'NATIONAL_ID_REQUIRED'
+        });
+      }
       verificationData.nationalIdHash = hashNationalId(verification.nationalId);
     } else if (verification.method === 'face_id') {
-      // In production, store face image securely
       verificationData.faceImageId = `face_${Date.now()}`;
     }
+    
+    // Process photos (expecting base64 strings from frontend)
+    const processedPhotos = photos.map((photo, index) => ({
+      fileId: `photo_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+      filename: photo.filename || `crash_photo_${index + 1}.jpg`,
+      data: photo.data || photo, // Store base64 data
+      uploadedAt: new Date()
+    }));
     
     // Generate report number
     const reportNumber = generateReportNumber();
@@ -94,17 +76,18 @@ router.post('/create', publicLimiter, upload.array('photos', 5), [
         coordinates: {
           lat: parseFloat(location.coordinates.lat),
           lng: parseFloat(location.coordinates.lng),
-          accuracy: location.coordinates.accuracy
+          accuracy: location.coordinates.accuracy || 0
         }
       },
       verification: verificationData,
-      photos: photos.map(p => ({
+      photos: processedPhotos.map(p => ({
         fileId: p.fileId,
         filename: p.filename,
+        data: p.data,
         uploadedAt: p.uploadedAt
       })),
-      vehiclesInvolved: vehiclesInvolved || 1,
-      estimatedInjured: estimatedInjured || 0,
+      vehiclesInvolved: parseInt(vehiclesInvolved) || 1,
+      estimatedInjured: parseInt(estimatedInjured) || 0,
       description: description || '',
       priority,
       status: 'pending',
