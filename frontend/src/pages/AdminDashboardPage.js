@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { adminAPI } from '../services/api';
 import './AdminDashboardPage.css';
 
 const AdminDashboardPage = () => {
-  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { socket } = useSocket();
   
@@ -17,9 +15,33 @@ const AdminDashboardPage = () => {
   const [activeTab, setActiveTab] = useState('reports');
   const [statusFilter, setStatusFilter] = useState('');
 
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Load reports
+      const reportsParams = {};
+      if (statusFilter) {
+        reportsParams.status = statusFilter;
+      }
+      const reportsRes = await adminAPI.getReports(reportsParams);
+      setReports(reportsRes.data.reports);
+
+      // Load ambulances
+      const ambulancesRes = await adminAPI.getAmbulances();
+      setAmbulances(ambulancesRes.data.ambulances);
+      setFleetSummary(ambulancesRes.data.summary);
+      
+    } catch (error) {
+      console.error('Load data error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter]);
+
   useEffect(() => {
     loadData();
-  }, [statusFilter]);
+  }, [loadData]);
 
   useEffect(() => {
     if (socket) {
