@@ -72,9 +72,6 @@ const ReportCrashPage = () => {
         video: { facingMode: 'user', width: 640, height: 480 }
       });
       setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
       setShowCamera(true);
       setError('');
     } catch (err) {
@@ -116,6 +113,19 @@ const ReportCrashPage = () => {
   const removeFacePhoto = () => {
     setFaceImage(null);
   };
+
+  // Set video stream when it's available
+  useEffect(() => {
+    if (stream && videoRef.current && showCamera) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current.play().catch(err => {
+          console.error('Video play error:', err);
+          setError('Unable to play video. Please try again.');
+        });
+      };
+    }
+  }, [stream, showCamera]);
 
   // Cleanup camera on unmount or when verification method changes
   useEffect(() => {
@@ -429,6 +439,7 @@ const ReportCrashPage = () => {
                         ref={videoRef} 
                         autoPlay 
                         playsInline
+                        muted
                         className="camera-video"
                       />
                       <div className="camera-controls">
